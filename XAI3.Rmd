@@ -1,0 +1,160 @@
+---
+title: "XAI3"
+author: "David"
+date: "2026-05-10"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+```{r}
+library(randomForest)
+library(pdp)
+library(ggplot2)
+library(dplyr)
+library(gridExtra)
+library(ggExtra)
+library(scales)
+```
+
+# Ejercicio 1: PDP Unidimensional – Bike Rentals
+
+```{r}
+bike <- read.csv("day.csv")
+
+bike$days_since_2011 <- as.numeric(
+  as.Date(bike$dteday) - as.Date("2011-01-01")
+)
+
+features_bike <- c("days_since_2011", "temp", "hum", "windspeed",
+                   "season", "yr", "mnth", "holiday", "weekday",
+                   "workingday", "weathersit")
+
+data_bike <- bike[, c(features_bike, "cnt")]
+```
+
+```{r}
+set.seed(42)
+rf_bikes <- randomForest(cnt ~ ., data = data_bike, ntree = 100)
+```
+
+```{r}
+plot_pdp_1d <- function(model, train_data, feature, feature_label, color = "#2196F3") {
+  pd <- partial(model, pred.var = feature, train = train_data)
+
+  ggplot(pd, aes_string(x = feature, y = "yhat")) +
+    geom_line(color = color, size = 1.2) +
+    geom_rug(data = train_data, aes_string(x = feature),
+             sides = "b", alpha = 0.3, inherit.aes = FALSE) +
+    labs(title = paste("PDP -", feature_label),
+         x = feature_label,
+         y = "Predicted Bike Rentals (cnt)") +
+    theme_bw()
+}
+```
+
+```{r}
+plot_pdp_1d(rf_bikes, data_bike, "days_since_2011", "Days Since 2011", color = "#1565C0")
+```
+
+```{r}
+plot_pdp_1d(rf_bikes, data_bike, "temp", "Temperature (normalized)", color = "#E53935")
+```
+
+```{r}
+plot_pdp_1d(rf_bikes, data_bike, "hum", "Humidity (normalized)", color = "#00897B")
+```
+
+```{r}
+plot_pdp_1d(rf_bikes, data_bike, "windspeed", "Wind Speed (normalized)", color = "#7B1FA2")
+```
+
+# Ejercicio 2: PDP Bidimensional – Humidity x Temperature
+
+```{r}
+set.seed(123)
+data_sample <- data_bike[sample(nrow(data_bike), 200), ]
+```
+
+```{r}
+pd_2d <- partial(rf_bikes, pred.var = c("hum", "temp"), train = data_sample, chull = FALSE)
+```
+
+```{r}
+hum_vals  <- sort(unique(pd_2d$hum))
+temp_vals <- sort(unique(pd_2d$temp))
+tile_w <- diff(hum_vals)[1]  * 1.05
+tile_h <- diff(temp_vals)[1] * 1.05
+
+p_2d <- ggplot(pd_2d, aes(x = hum, y = temp, fill = yhat)) +
+  geom_tile(width = tile_w, height = tile_h) +
+  geom_point(data = data_bike, aes(x = hum, y = temp),
+             color = "white", alpha = 0.2, size = 0.7, inherit.aes = FALSE) +
+  scale_fill_viridis_c(option = "C", name = "Predicted\nRentals") +
+  labs(title = "2D PDP - Humidity x Temperature",
+       x = "Humidity (normalized)",
+       y = "Temperature (normalized)") +
+  theme_bw()
+
+ggMarginal(p_2d, type = "density", fill = "steelblue", alpha = 0.5, color = "white")
+```
+
+# Ejercicio 3: PDP – Precio de Vivienda (King County)
+
+```{r}
+houses <- read.csv("kc_house_data.csv")
+
+features_house <- c("bedrooms", "bathrooms", "sqft_living",
+                    "sqft_lot", "floors", "yr_built")
+
+data_house <- na.omit(houses[, c(features_house, "price")])
+```
+
+```{r}
+set.seed(42)
+data_train_house <- data_house[sample(nrow(data_house), 5000), ]
+```
+
+```{r}
+set.seed(42)
+rf_houses <- randomForest(price ~ ., data = data_train_house, ntree = 100)
+```
+
+```{r}
+set.seed(123)
+data_pdp_house <- data_train_house[sample(nrow(data_train_house), 500), ]
+```
+
+```{r}
+plot_pdp_house <- function(model, train_data, feature, feature_label, color = "#1976D2") {
+  pd <- partial(model, pred.var = feature, train = train_data)
+
+  ggplot(pd, aes_string(x = feature, y = "yhat")) +
+    geom_line(color = color, size = 1.2) +
+    geom_rug(data = train_data, aes_string(x = feature),
+             sides = "b", alpha = 0.3, inherit.aes = FALSE) +
+    scale_y_continuous(labels = comma) +
+    labs(title = paste("PDP -", feature_label),
+         x = feature_label,
+         y = "Predicted Price (USD)") +
+    theme_bw()
+}
+```
+
+```{r}
+plot_pdp_house(rf_houses, data_pdp_house, "bedrooms", "Bedrooms", color = "#1565C0")
+```
+
+```{r}
+plot_pdp_house(rf_houses, data_pdp_house, "bathrooms", "Bathrooms", color = "#AD1457")
+```
+
+```{r}
+plot_pdp_house(rf_houses, data_pdp_house, "sqft_living", "Living Area (sqft)", color = "#2E7D32")
+```
+
+```{r}
+plot_pdp_house(rf_houses, data_pdp_house, "floors", "Floors", color = "#E65100")
+```
